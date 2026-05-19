@@ -72,7 +72,7 @@ async function saveSnapshot(sessionName, manager) {
     await prisma.gameSession.update({
       where: { name: sessionName },
       data: {
-        snapshot: JSON.stringify(snapshot),
+        snapshot: snapshot,
         lastActivityAt: new Date()
       }
     });
@@ -2158,7 +2158,7 @@ async function initializeGameManager(sessionName) {
           if (session) {
             await prisma.gameHand.create({
               data: {
-                winner: summary.winner.name,
+                winner: summary.winner?.name || 'N/A',
                 potSize: summary.pot,
                 logs: JSON.stringify(summary.logs || []),
                 sessionId: session.id
@@ -2764,6 +2764,24 @@ async function initializeDatabase() {
         console.log('[INFO] Database seeded successfully');
       } else {
         throw e;
+      }
+    }
+    
+    // Check if schema is up to date (new columns exist)
+    try {
+      await prisma.gameSession.findFirst({ select: { snapshot: true, lastActivityAt: true } });
+      console.log('[INFO] Database schema is up to date');
+    } catch (schemaError) {
+      if (schemaError.code === 'P2022' || schemaError.code === 'P2021') {
+        console.log('[INFO] Database schema needs update for new columns. Running db push...');
+        const { execSync } = require('child_process');
+        execSync('npx prisma db push --accept-data-loss', {
+          cwd: __dirname,
+          stdio: 'inherit'
+        });
+        console.log('[INFO] Database schema updated successfully');
+      } else {
+        throw schemaError;
       }
     }
   } catch (error) {
