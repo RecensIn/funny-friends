@@ -251,6 +251,11 @@ class GameManager extends EventEmitter {
         this.gameState.currentLogs = [`Round ${this.currentRound} Started. Boot collected.`];
         this.gameState.phase = 'ACTIVE';
         this.gameState.sideShowRequest = null;
+        this.gameState.showRequest = null;
+        this.gameState.recoveredFromCrash = false;
+        
+        // Clear any lingering timeouts from previous round
+        this.clearRequestTimeouts();
 
         const state = this.getPublicState();
         console.log('[DEBUG] Emitting state_change with phase:', state.phase, 'gamePlayers:', state.gamePlayers.length);
@@ -738,8 +743,11 @@ class GameManager extends EventEmitter {
     resetRound() {
         this.gameState.pot = 0;
         this.gameState.winner = null;
+        this.gameState.sideShowRequest = null;
+        this.gameState.showRequest = null;
         this.gameState.currentLogs.push(`Round ${this.currentRound} reset. Starting fresh.`);
         
+        this.clearRequestTimeouts();
         this.emit('state_change', this.getPublicState());
         return { success: true };
     }

@@ -64,6 +64,8 @@ const approvedViewers = new Map(); // sessionName -> Set of socket IDs
 // Export prisma for use in controllers
 // module.exports moved to end of file
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 // --- SNAPSHOT PERSISTENCE HELPER ---
 async function saveSnapshot(sessionName, manager) {
   if (!manager || !manager.getSnapshot) return;
@@ -104,7 +106,7 @@ setInterval(async () => {
       // Check if manager has been inactive for too long
       const isInactive = !manager.isActive || manager.gameState?.phase === 'ENDED';
       if (isInactive) {
-        console.log(`[CLEANUP] Removing inactive manager from memory: ${name}`);
+        isDev && console.log(`[CLEANUP] Removing inactive manager from memory: ${name}`);
         activeSessions.delete(name);
         clearSnapshot(name).catch(() => {});
         continue;
@@ -116,13 +118,13 @@ setInterval(async () => {
         select: { isActive: false, lastActivityAt: true }
       });
       if (!dbSession || !dbSession.isActive) {
-        console.log(`[CLEANUP] Removing stale session from memory: ${name}`);
+        isDev && console.log(`[CLEANUP] Removing stale session from memory: ${name}`);
         activeSessions.delete(name);
         clearSnapshot(name).catch(() => {});
       } else if (dbSession.lastActivityAt) {
         const lastActivity = new Date(dbSession.lastActivityAt).getTime();
         if (now - lastActivity > STALE_SESSION_MS) {
-          console.log(`[CLEANUP] Session ${name} stale for ${Math.round((now - lastActivity) / 60000)}min, cleaning up`);
+          isDev && console.log(`[CLEANUP] Session ${name} stale for ${Math.round((now - lastActivity) / 60000)}min, cleaning up`);
           activeSessions.delete(name);
           clearSnapshot(name).catch(() => {});
         }
@@ -2041,20 +2043,19 @@ app.post('/api/sessions', requireAuth, asyncHandler(async (req, res) => {
           });
         }
       }
+      // Auto-initialize GameManager before responding
+      // This ensures the game is ready immediately without waiting for operator to join via socket
+      try {
+        await initializeGameManager(session.name);
+        console.log(`[DEBUG] Auto-initialized GameManager for session: ${session.name}`);
+      } catch (error) {
+        console.error(`[ERROR] Failed to auto-initialize GameManager for ${session.name}:`, error);
+        // Don't fail the request - game can still be initialized lazily when operator joins
+      }
     }
   }
 
   res.json({ success: true, session });
-  
-  // Auto-initialize GameManager after session creation
-  // This ensures the game is ready immediately without waiting for operator to join via socket
-  try {
-    await initializeGameManager(session.name);
-    console.log(`[DEBUG] Auto-initialized GameManager for session: ${session.name}`);
-  } catch (error) {
-    console.error(`[ERROR] Failed to auto-initialize GameManager for ${session.name}:`, error);
-    // Don't fail the request - game can still be initialized lazily when operator joins
-  }
 }));
 
 // 5. REAL-TIME SOCKET
@@ -2148,15 +2149,19 @@ async function initializeGameManager(sessionName) {
           });
         }
         
-        // Persist snapshot for crash recovery
-        saveSnapshot(sessionName, newManager);
+        // Persist snapshot for crash recovery (fire-and-forget with internal error handling)
+        saveSnapshot(sessionName, newManager).catch(err => {
+          console.error(`[ERROR] Snapshot save failed for ${sessionName}:`, err.message);
+        });
       });
       
       newManager.on('hand_complete', async (summary) => {
         try {
-          const session = await prisma.gameSession.findUnique({ where: { name: sessionName } });
-          if (session) {
-            await prisma.gameHand.create({
+          await prisma.$transaction(async (tx) => {
+            const session = await tx.gameSession.findUnique({ where: { name: sessionName } });
+            if (!session) return;
+
+            await tx.gameHand.create({
               data: {
                 winner: summary.winner?.name || 'N/A',
                 potSize: summary.pot,
@@ -2164,22 +2169,22 @@ async function initializeGameManager(sessionName) {
                 sessionId: session.id
               }
             });
-            
+
             if (summary.netChanges) {
               for (const [playerId, change] of Object.entries(summary.netChanges)) {
                 const pid = parseInt(playerId);
-                await prisma.player.update({
+                await tx.player.update({
                   where: { id: pid },
                   data: { sessionBalance: { increment: change } }
                 });
               }
             }
-            
-            await prisma.gameSession.update({
+
+            await tx.gameSession.update({
               where: { id: session.id },
               data: { currentRound: summary.currentRound }
             });
-          }
+          });
         } catch (e) {
           console.error('[ERROR] Failed to save hand persistence:', e);
         }
@@ -2187,15 +2192,19 @@ async function initializeGameManager(sessionName) {
         io.to(sessionName).emit('game_update', { type: 'HAND_COMPLETE', ...summary });
         
         // Clear snapshot since hand is complete
-        clearSnapshot(sessionName);
+        clearSnapshot(sessionName).catch(err => {
+          console.error(`[ERROR] Snapshot clear failed for ${sessionName}:`, err.message);
+        });
       });
       
       // Rummy uses round_complete instead of hand_complete
       newManager.on('round_complete', async (summary) => {
         try {
-          const session = await prisma.gameSession.findUnique({ where: { name: sessionName } });
-          if (session) {
-            await prisma.gameHand.create({
+          await prisma.$transaction(async (tx) => {
+            const session = await tx.gameSession.findUnique({ where: { name: sessionName } });
+            if (!session) return;
+
+            await tx.gameHand.create({
               data: {
                 winner: summary.winner?.name || 'N/A',
                 potSize: 0,
@@ -2203,27 +2212,26 @@ async function initializeGameManager(sessionName) {
                 sessionId: session.id
               }
             });
-            
-            // Update player scores - Rummy uses 'score' field
+
             if (summary.leaderboard) {
               for (const player of summary.leaderboard) {
-                await prisma.player.updateMany({
-                  where: { 
+                await tx.player.updateMany({
+                  where: {
                     sessionId: session.id,
                     name: player.name
                   },
-                  data: { 
-                    score: player.totalScore 
+                  data: {
+                    score: player.totalScore
                   }
                 });
               }
             }
-            
-            await prisma.gameSession.update({
+
+            await tx.gameSession.update({
               where: { id: session.id },
               data: { currentRound: summary.round }
             });
-          }
+          });
         } catch (e) {
           console.error('[ERROR] Failed to save round persistence:', e);
         }
@@ -2231,26 +2239,30 @@ async function initializeGameManager(sessionName) {
         io.to(sessionName).emit('game_update', { type: 'ROUND_COMPLETE', ...summary });
         
         // Clear snapshot since round is complete
-        clearSnapshot(sessionName);
+        clearSnapshot(sessionName).catch(err => {
+          console.error(`[ERROR] Snapshot clear failed for ${sessionName}:`, err.message);
+        });
       });
       
-      newManager.on('session_ended', async (data) => {
-        try {
-          await prisma.gameSession.update({
-            where: { name: sessionName },
-            data: { isActive: false }
-          });
-          console.log(`[DEBUG] Session ${sessionName} marked as complete`);
-        } catch (e) {
-          console.error('[ERROR] Failed to mark session as complete:', e);
-        }
-        
-        io.to(sessionName).emit('session_ended', data);
-        activeSessions.delete(sessionName);
-        
-        // Clear snapshot since session has ended
-        clearSnapshot(sessionName);
+  newManager.on('session_ended', async (data) => {
+    try {
+      await prisma.gameSession.update({
+        where: { name: sessionName },
+        data: { isActive: false }
       });
+      console.log(`[DEBUG] Session ${sessionName} marked as complete`);
+    } catch (e) {
+      console.error('[ERROR] Failed to mark session as complete:', e);
+    }
+    
+    io.to(sessionName).emit('session_ended', data);
+    activeSessions.delete(sessionName);
+    
+    // Clear snapshot since session has ended
+    clearSnapshot(sessionName).catch(err => {
+      console.error(`[ERROR] Snapshot clear failed for ${sessionName}:`, err.message);
+    });
+  });
       
       activeSessions.set(sessionName, newManager);
       console.log(`[DEBUG] GameManager initialized for ${sessionName} with ${initialPlayers.length} players`);
@@ -2396,10 +2408,10 @@ io.on('connection', (socket) => {
       return socket.emit('error_message', 'Invalid action format');
     }
     
-    console.log('[DEBUG] game_action received:', action.type, 'for session:', action.sessionName);
+    isDev && console.log('[DEBUG] game_action received:', action.type, 'for session:', action.sessionName);
     
     if (!isOperatorOrAdmin()) {
-      console.log('[DEBUG] Unauthorized - user role:', socket.user.role);
+      isDev && console.log('[DEBUG] Unauthorized - user role:', socket.user.role);
       return socket.emit('error_message', 'Unauthorized');
     }
 
@@ -2726,7 +2738,11 @@ if (process.env.NODE_ENV === 'production') {
 // Global error handling middleware
 app.use((err, req, res, next) => {
   console.error('Global error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.status(500).json({
+    error: isProduction ? 'Internal server error' : err.message,
+    ...(isProduction ? {} : { stack: err.stack })
+  });
 });
 
 const PORT = process.env.PORT || 3000;
