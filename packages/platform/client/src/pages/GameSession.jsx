@@ -124,7 +124,9 @@ const GameSession = () => {
           eliminated: state.eliminated,
           remainingPlayers: state.remainingPlayers
         });
-        setShowRoundSummary(true);
+        if (!state.isSessionOver) {
+          setShowRoundSummary(true);
+        }
         if (state.players) setPlayers(state.players);
       } else if (state.type === 'ROUND_COMPLETE') {
         // Rummy round complete
@@ -947,30 +949,6 @@ const GameSession = () => {
               })}
             </div>
 
-            {/* Overall Standings - Active Game HUD */}
-            {currentPhase !== 'SETUP' && gameState?.overallStandings && (
-              <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                  {isRummy ? 'Leaderboard' : 'Overall Standings'} 
-                  <span className="ml-2 text-slate-400 normal-case">
-                    ({isRummy ? `${Math.max(0, (gameState?.totalRounds || 0) - (gameState?.currentRound || 0) + 1)} rounds remaining` : `${Math.max(0, (gameState?.totalRounds || 0) - (gameState?.currentRound || 0))} hands remaining`})
-                  </span>
-                </h3>
-                <div className="space-y-1">
-                  {gameState.overallStandings.slice(0, 5).map((player, index) => (
-                    <div key={player.id} className={`flex justify-between items-center p-1.5 rounded text-sm ${index === 0 ? 'bg-yellow-500/10' : ''}`}>
-                      <div className="flex items-center gap-2">
-                        <span className={`font-bold text-xs ${index === 0 ? 'text-yellow-400' : 'text-slate-400'}`}>#{index + 1}</span>
-                        <span className="text-slate-200">{player.name}</span>
-                        {player.status === 'LEFT' && <span className="text-[10px] text-red-400">LEFT</span>}
-                      </div>
-                      <span className="font-bold text-white">{isRummy ? `${player.score || 0} pts` : `${player.sessionBalance || 0}`}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Teen Patti Controls */}
             {isOperatorOrAdmin && activePlayer && !sideShowRequest && !showRequest && !isRummy && (
               <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
@@ -1014,6 +992,30 @@ const GameSession = () => {
                   <button onClick={handleShow} disabled={!canShow && !canForceShow} className={`flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border ${canShow || canForceShow ? 'bg-slate-700 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10' : 'border-slate-700 text-slate-600 opacity-50 cursor-not-allowed'}`}>
                     <Trophy size={16} /> {canForceShow ? 'FORCE SHOW' : 'SHOW'}
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Overall Standings - Active Game HUD (bottom) */}
+            {currentPhase !== 'SETUP' && gameState?.overallStandings && (
+              <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  {isRummy ? 'Leaderboard' : 'Overall Standings'} 
+                  <span className="ml-2 text-slate-400 normal-case">
+                    ({isRummy ? `${Math.max(0, (gameState?.totalRounds || 0) - (gameState?.currentRound || 0) + 1)} rounds remaining` : `${Math.max(0, (gameState?.totalRounds || 0) - (gameState?.currentRound || 0))} hands remaining`})
+                  </span>
+                </h3>
+                <div className="space-y-1">
+                  {gameState.overallStandings.slice(0, 5).map((player, index) => (
+                    <div key={player.id} className={`flex justify-between items-center p-1.5 rounded text-sm ${index === 0 ? 'bg-yellow-500/10' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold text-xs ${index === 0 ? 'text-yellow-400' : 'text-slate-400'}`}>#{index + 1}</span>
+                        <span className="text-slate-200">{player.name}</span>
+                        {player.status === 'LEFT' && <span className="text-[10px] text-red-400">LEFT</span>}
+                      </div>
+                      <span className="font-bold text-white">{isRummy ? `${player.score || 0} pts` : `${player.sessionBalance || 0}`}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

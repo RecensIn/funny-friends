@@ -400,6 +400,15 @@ class GameManager extends EventEmitter {
             return { success: false, error: "Invalid winner ID" };
         }
         
+        const requesterHand = evaluateHand(requester.hand);
+        const targetHand = evaluateHand(target.hand);
+        const comparison = compareHands(requesterHand, targetHand);
+        const actualWinner = comparison > 0 ? requester : target;
+        
+        if (winnerId !== actualWinner.id) {
+            return { success: false, error: `Invalid selection: ${actualWinner.name} has the stronger hand` };
+        }
+        
         const winner = winnerId === requester.id ? requester : target;
         const loser = winnerId === requester.id ? target : requester;
         
