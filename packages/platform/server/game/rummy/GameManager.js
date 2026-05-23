@@ -309,6 +309,9 @@ class RummyLedger extends EventEmitter {
             if (this.currentRound > this.totalRounds) {
                 isSessionOver = true;
                 finalWinner = leaderboard.length > 0 ? leaderboard[0] : null;
+                if (finalWinner) {
+                    this.gameState.winner = finalWinner;
+                }
                 this.gameState.currentLogs.push(`🏆 MAX ROUNDS REACHED! ${finalWinner?.name || 'N/A'} is the champion!`);
             }
         }
@@ -333,7 +336,7 @@ class RummyLedger extends EventEmitter {
             this.gameState.phase = 'ENDED';
             this.emit('session_ended', { 
                 reason: 'GAME_COMPLETE',
-                finalWinner: this.gameState.winner,
+                finalWinner: finalWinner,
                 finalRound: completedRound,
                 totalRounds: this.totalRounds,
                 leaderboard: leaderboard,

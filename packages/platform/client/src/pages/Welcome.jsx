@@ -31,7 +31,7 @@ const Welcome = () => {
             if (user.role === 'ADMIN') {
                 navigate('/admin');
             } else if (user.role === 'OPERATOR') {
-                navigate('/operator-dashboard');
+                navigate('/operator/dashboard');
             }
             // PLAYER and GUEST stay on Welcome page to select games
         }
@@ -43,7 +43,7 @@ const Welcome = () => {
         if (user) {
             // User is logged in, check permissions
             if (user.role === 'ADMIN' || user.role === 'OPERATOR') {
-                navigate(`/setup?game=${game.code}`);
+                navigate(`/sessions/new?game=${game.code}`);
             } else {
                 // For players/viewers, show join dialog
                 setSelectedGame(game);
@@ -91,7 +91,7 @@ const Welcome = () => {
                         <div className="space-y-3 sm:space-y-4">
                             {user?.role === 'ADMIN' || user?.role === 'OPERATOR' ? (
                                 <button
-                                    onClick={() => navigate(`/setup?game=${selectedGame.code}`)}
+                                    onClick={() => navigate(`/sessions/new?game=${selectedGame.code}`)}
                                     className="w-full py-3 sm:py-4 bg-gradient-to-r from-violet-600 to-pink-600 text-white rounded-xl font-bold text-base sm:text-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
                                 >
                                     <Gamepad2 size={18} />
@@ -100,11 +100,11 @@ const Welcome = () => {
                             ) : null}
                             
                             <button
-                                onClick={() => navigate(`/viewer?game=${selectedGame.code}`)}
+                                onClick={() => navigate('/login')}
                                 className="w-full py-3 sm:py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-bold text-base sm:text-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
                             >
                                 <Eye size={18} />
-                                Watch Live Games
+                                Sign In to Watch
                             </button>
 
                             {!user && (

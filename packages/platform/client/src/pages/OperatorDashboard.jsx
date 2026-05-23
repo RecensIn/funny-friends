@@ -119,7 +119,7 @@ const OperatorDashboard = () => {
                         
                         <div className="flex items-center gap-3">
                             <button 
-                                onClick={() => navigate('/setup')}
+                                onClick={() => navigate('/sessions/new')}
                                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
                             >
                                 <Plus size={18} /> New Game
@@ -201,7 +201,7 @@ const OperatorDashboard = () => {
                             <h3 className="text-xl font-bold text-slate-900 mb-2">No Active Games</h3>
                             <p className="text-slate-500 mb-6">Create a new game to get started</p>
                             <button 
-                                onClick={() => navigate('/setup')}
+                                onClick={() => navigate('/sessions/new')}
                                 className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
                             >
                                 Start New Game

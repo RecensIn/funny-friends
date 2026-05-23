@@ -207,6 +207,24 @@ const GameSession = () => {
     const onSessionEnded = (data) => {
       setSessionSummaryData(data);
       setShowSessionSummary(true);
+      setSessionStatus('ended');
+      setGameState(prev => ({
+        ...prev,
+        phase: 'ENDED',
+        currentRound: data.finalRound,
+        totalRounds: data.totalRounds,
+        players: data.finalPlayers || data.leaderboard || data.players || [],
+        overallWinner: data.overallWinner || data.finalWinner,
+        roundHistory: data.roundHistory || [],
+        ...data
+      }));
+      if (data.finalPlayers) {
+        setPlayers(data.finalPlayers);
+        setGamePlayers(data.finalPlayers);
+      }
+      if (data.leaderboard) {
+        setPlayers(data.leaderboard);
+      }
     };
 
     const onErrorMessage = (message) => {

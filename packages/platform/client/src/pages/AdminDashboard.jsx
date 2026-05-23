@@ -69,7 +69,7 @@ const AdminDashboard = () => {
             if (res.ok) {
                 alert('System reset successful. Redirecting to setup...');
                 await logout();
-                navigate('/setup');
+                navigate('/system-setup');
             } else {
                 const data = await res.json();
                 alert(data.error || 'Reset failed');
@@ -327,7 +327,7 @@ const AdminDashboard = () => {
                                 <UserPlus size={18} /> Add User
                             </button>
                             <button
-                                onClick={() => navigate('/setup')}
+                                onClick={() => navigate('/sessions/new')}
                                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all"
                             >
                                 <Gamepad2 size={18} /> New Game

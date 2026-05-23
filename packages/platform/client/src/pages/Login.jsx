@@ -17,16 +17,16 @@ const Login = () => {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user) {
-      const from = location.state?.from || '/';
-      if (user.role === 'ADMIN') {
-        navigate('/admin');
-      } else if (user.role === 'OPERATOR') {
-        navigate('/operator-dashboard');
-      } else {
-        navigate(from);
+      if (user) {
+        const from = location.state?.from || '/';
+        if (user.role === 'ADMIN') {
+          navigate('/admin');
+        } else if (user.role === 'OPERATOR') {
+          navigate('/operator/dashboard');
+        } else {
+          navigate(from);
+        }
       }
-    }
   }, [user, navigate, location]);
 
   // Check if setup is needed
@@ -58,7 +58,7 @@ const Login = () => {
         }
       } else {
         if (result.details?.needsSetup) {
-          navigate('/setup');
+          navigate('/system-setup');
           return;
         }
 
@@ -85,7 +85,7 @@ const Login = () => {
             This is a fresh installation. Please create the first admin user to get started.
           </p>
           <button
-            onClick={() => navigate('/setup')}
+            onClick={() => navigate('/system-setup')}
             className="w-full py-3 sm:py-4 bg-gradient-to-r from-violet-600 to-pink-600 text-white rounded-xl font-bold text-base sm:text-lg hover:shadow-lg transition-all"
           >
             Start Setup
