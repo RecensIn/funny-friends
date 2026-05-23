@@ -40,7 +40,7 @@ function evaluateHand(cards) {
     }
     
     const isSequence = (c1.value - c2.value === 1 && c2.value - c3.value === 1) || 
-                       (c1.rank === 'A' && c2.rank === '2' && c3.rank === '3');
+                       (c1.value === 14 && c2.value === 3 && c3.value === 2);
     const isSameSuit = c1.suit === c2.suit && c2.suit === c3.suit;
     
     if (isSameSuit && isSequence) {
@@ -511,6 +511,7 @@ class GameManager extends EventEmitter {
                 requester.invested += penalty;
                 this.gameState.pot += penalty;
                 requester.folded = true;
+                target.status = 'SEEN';
                 this.gameState.currentLogs.push(`${target.name} (BLIND) wins Force Show against ${requester.name} (SEEN)`);
                 this.gameState.currentLogs.push(`${requester.name} pays penalty of ${penalty} and packs.`);
             }
@@ -716,23 +717,6 @@ class GameManager extends EventEmitter {
         if (!winner) {
             return { success: false, error: "Winner not found" };
         }
-
-        this.gameState.winner = winner;
-        this.gameState.currentLogs.push(`🏆 ${winner.name} wins Round ${this.currentRound}! Pot: ${this.gameState.pot}`);
-
-        const netChanges = {};
-        this.gameState.players.forEach(p => {
-            const invested = p.invested || 0;
-            if (p.id === winner.id) {
-                netChanges[p.id] = this.gameState.pot - invested;
-                p.sessionBalance = (p.sessionBalance || 0) + netChanges[p.id];
-            } else {
-                netChanges[p.id] = -invested;
-                p.sessionBalance = (p.sessionBalance || 0) + netChanges[p.id];
-            }
-            p.invested = 0;
-        });
-
         return this.endHand(winner);
     }
 
