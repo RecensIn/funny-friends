@@ -240,7 +240,7 @@ class GameManager extends EventEmitter {
 
         this.gameState.pot = this.gameState.gamePlayers.length * 5;
         this.gameState.currentStake = 20;
-        this.gameState.activePlayerIndex = 0;
+        this.gameState.activePlayerIndex = (this.currentRound - 1) % this.gameState.gamePlayers.length;
         this.gameState.currentLogs = [`Round ${this.currentRound} Started. Boot: ${this.gameState.pot}. Stake: ${this.gameState.currentStake}.`];
         this.gameState.phase = 'ACTIVE';
         this.gameState.sideShowRequest = null;
