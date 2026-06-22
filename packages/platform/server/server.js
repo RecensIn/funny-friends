@@ -313,7 +313,7 @@ async function initializeDatabase() {
     } catch (e) {
       if (e.code === 'P2021' || e.message.includes('does not exist')) {
         console.log('[INFO] Database tables not found. Running db push...');
-        execSync('npx prisma db push', {
+        execSync('npx prisma db push --accept-data-loss', {
           cwd: __dirname, stdio: 'inherit',
           env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
         });
@@ -331,7 +331,7 @@ async function initializeDatabase() {
     } catch (schemaError) {
       if (schemaError.code === 'P2022' || schemaError.code === 'P2021') {
         console.log('[INFO] Database schema needs update. Running db push...');
-        execSync('npx prisma db push', {
+        execSync('npx prisma db push --accept-data-loss', {
           cwd: __dirname, stdio: 'inherit',
           env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
         });
