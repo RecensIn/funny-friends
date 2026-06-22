@@ -2,366 +2,334 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Plus, Users, Gamepad2, ArrowLeft, Trash2, 
-  CheckCircle, AlertCircle 
+  AlertCircle, CheckCircle, Hash, Target, Play
 } from 'lucide-react';
 import { API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
+
+const PLAYER_LIMIT = 17;
+
+const GameCard = ({ game, isSelected, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full p-4 rounded-xl border-2 text-left transition-all duration-200 ${
+      isSelected
+        ? 'border-violet-500 bg-violet-500/10 ring-1 ring-violet-500/30'
+        : 'border-slate-700 bg-slate-800/50 hover:border-slate-600 hover:bg-slate-800'
+    }`}
+  >
+    <div className="flex items-start gap-3">
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 bg-gradient-to-br ${game.color}`}>
+        <span>{game.icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-slate-50 text-sm">{game.name}</h3>
+          {isSelected && <CheckCircle size={16} className="text-violet-400 flex-shrink-0" />}
+        </div>
+        <p className="text-xs text-slate-400 mt-0.5">{game.description}</p>
+        <p className="text-xs text-slate-500 mt-1">{game.minPlayers}–{game.maxPlayers} players</p>
+      </div>
+    </div>
+  </button>
+);
+
+const PlayerRow = ({ index, name, onChange, onRemove, canRemove }) => (
+  <div className="flex items-center gap-2">
+    <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-xs font-medium text-slate-300 flex-shrink-0">
+      {index + 1}
+    </div>
+    <input
+      type="text"
+      value={name}
+      onChange={(e) => onChange(index, e.target.value)}
+      placeholder={`Player ${index + 1}`}
+      className="input flex-1"
+    />
+    <button
+      type="button"
+      onClick={() => onRemove(index)}
+      disabled={!canRemove}
+      className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+      aria-label={`Remove player ${index + 1}`}
+    >
+      <Trash2 size={16} />
+    </button>
+  </div>
+);
 
 const SessionSetup = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [games, setGames] = useState([]);
   const [selectedGame, setSelectedGame] = useState(null);
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    totalRounds: 10,
-    targetScore: 100,
-    gameCode: searchParams.get('game') || ''
-  });
-  
-  const [players, setPlayers] = useState([
-    { name: '', seat: 1 }
-  ]);
+  const [sessionName, setSessionName] = useState('');
+  const [totalRounds, setTotalRounds] = useState(10);
+  const [targetScore, setTargetScore] = useState(100);
+  const [players, setPlayers] = useState(['']);
 
   useEffect(() => {
-    fetchGames();
-  }, []);
-
-  const fetchGames = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/gametypes`, {
-        credentials: 'include'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setGames(data.filter(g => g.isActive));
-        
+    fetch(`${API_URL}/api/gametypes`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        const active = data.filter(g => g.isActive);
+        setGames(active);
         const gameCode = searchParams.get('game');
         if (gameCode) {
-          const game = data.find(g => g.code === gameCode);
+          const game = active.find(g => g.code === gameCode);
           if (game) setSelectedGame(game);
         }
-      }
-    } catch (error) {
-      console.error('Failed to fetch games:', error);
-    }
-  };
+      })
+      .catch(() => {});
+  }, [searchParams]);
 
   const handleAddPlayer = () => {
-    if (players.length >= 17) {
-      setError('Maximum 17 players allowed');
+    if (players.length >= PLAYER_LIMIT) {
+      setError(`Maximum ${PLAYER_LIMIT} players`);
       return;
     }
-    setPlayers([...players, { name: '', seat: players.length + 1 }]);
+    setPlayers([...players, '']);
+    setError('');
   };
 
   const handleRemovePlayer = (index) => {
-    if (players.length <= 1) {
-      setError('At least 1 player required');
-      return;
-    }
-    const newPlayers = players.filter((_, i) => i !== index);
-    setPlayers(newPlayers.map((p, i) => ({ ...p, seat: i + 1 })));
+    if (players.length <= 1) return;
+    setPlayers(players.filter((_, i) => i !== index));
+    setError('');
   };
 
-  const handlePlayerChange = (index, field, value) => {
-    const newPlayers = [...players];
-    newPlayers[index][field] = value;
-    setPlayers(newPlayers);
+  const handlePlayerChange = (index, value) => {
+    const next = [...players];
+    next[index] = value;
+    setPlayers(next);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!sessionName.trim()) {
+      setError('Session name is required');
+      return;
+    }
+    if (!selectedGame) {
+      setError('Select a game type');
+      return;
+    }
+
+    const validPlayers = players.map(p => p.trim()).filter(Boolean);
+    if (validPlayers.length < selectedGame.minPlayers) {
+      setError(`Need at least ${selectedGame.minPlayers} players for ${selectedGame.name}`);
+      return;
+    }
+    if (validPlayers.length > selectedGame.maxPlayers) {
+      setError(`Maximum ${selectedGame.maxPlayers} players for ${selectedGame.name}`);
+      return;
+    }
+
     setLoading(true);
 
-    if (!formData.name.trim()) {
-      setError('Session name is required');
-      setLoading(false);
-      return;
-    }
-
-    if (!selectedGame) {
-      setError('Please select a game');
-      setLoading(false);
-      return;
-    }
-
-    const validPlayers = players.filter(p => p.name.trim());
-    if (validPlayers.length < selectedGame.minPlayers) {
-      setError(`At least ${selectedGame.minPlayers} players required for ${selectedGame.name}`);
-      setLoading(false);
-      return;
-    }
-
-    if (validPlayers.length > selectedGame.maxPlayers) {
-      setError(`Maximum ${selectedGame.maxPlayers} players allowed for ${selectedGame.name}`);
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Prepare game-specific configuration
-      const gameConfig = selectedGame.code === 'rummy' 
-        ? { 
-            targetScore: parseInt(formData.targetScore),
-            gameLimitType: 'points'
-          }
-        : { 
-            totalRounds: parseInt(formData.totalRounds),
-            gameLimitType: 'rounds'
-          };
-
+      const isRummy = selectedGame.code === 'rummy';
       const res = await fetch(`${API_URL}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          name: formData.name,
+          name: sessionName.trim(),
           gameCode: selectedGame.code,
-          ...gameConfig,
-          players: validPlayers.map((p, i) => ({
-            name: p.name.trim(),
-            seat: i + 1
-          }))
+          ...(isRummy
+            ? { targetScore: parseInt(targetScore), gameLimitType: 'points' }
+            : { totalRounds: parseInt(totalRounds), gameLimitType: 'rounds' }
+          ),
+          players: validPlayers.map((name, i) => ({ name, seat: i + 1 }))
         })
       });
 
       const data = await res.json();
-
       if (res.ok && data.success) {
-        // Redirect to operator sessions to see the created session
-        navigate('/operator/sessions');
+        navigate(`/game/${encodeURIComponent(sessionName.trim())}`);
       } else {
         setError(data.error || data.message || 'Failed to create session');
       }
     } catch (e) {
-      console.error('Create session error:', e);
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const minPlayers = selectedGame?.minPlayers || 2;
+  const validCount = players.map(p => p.trim()).filter(Boolean).length;
+  const canSubmit = sessionName.trim() && selectedGame && validCount >= minPlayers && !loading;
+
   return (
-    <div className="container-app">
-      {/* Background gradient */}
-      <div className="fixed inset-0 bg-gradient-radial from-violet-900/20 via-slate-900 to-slate-900" />
-      
-      {/* Header */}
-      <div className="page-header relative">
-        <div className="page-header-content">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <button
-              onClick={() => navigate('/operator/sessions')}
-              className="btn btn-ghost p-2"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h1 className="page-title">Create New Session</h1>
-              <p className="page-subtitle hidden sm:block">Set up a new game session</p>
-            </div>
+    <div className="min-h-screen bg-slate-900">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="flex items-center gap-3 mb-6 sm:mb-8">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-50">New Game Session</h1>
+            <p className="text-sm text-slate-400">Set up a card game ledger session</p>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="relative container-content">
         {error && (
-          <div className="mb-4 sm:mb-6 alert alert-error">
+          <div className="mb-4 alert alert-error">
             <AlertCircle size={18} className="flex-shrink-0" />
             <p className="text-sm">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="max-w-4xl space-y-4 sm:space-y-6">
-          {/* Session Details */}
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="card">
-            <div className="card-header">
-              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2 text-slate-50">
-                <Gamepad2 size={18} className="text-violet-400" />
-                Session Details
-              </h2>
-            </div>
             <div className="card-body space-y-4">
               <div className="form-group">
-                <label className="form-label">Session Name *</label>
+                <label htmlFor="session-name" className="form-label">Session Name</label>
                 <input
+                  id="session-name"
                   type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
                   className="input"
-                  placeholder="e.g., Friday Night Game"
+                  placeholder="Friday Night Game, Monthly Tournament…"
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Select Game *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <label className="form-label">Game Type</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {games.map((game) => (
-                    <button
+                    <GameCard
                       key={game.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGame(game);
-                        setFormData({...formData, gameCode: game.code});
-                      }}
-                      className={`p-3 sm:p-4 rounded-xl border-2 text-left transition-all ${
-                        selectedGame?.id === game.id
-                          ? 'border-violet-500 bg-violet-500/10'
-                          : 'border-slate-700 hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-violet-500 to-violet-700 rounded-xl flex items-center justify-center text-xl sm:text-2xl flex-shrink-0">
-                          {game.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-50 text-sm sm:text-base">{game.name}</h3>
-                          <p className="text-xs sm:text-sm text-slate-400 line-clamp-2">{game.description}</p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {game.minPlayers}-{game.maxPlayers} players
-                          </p>
-                        </div>
-                        {selectedGame?.id === game.id && (
-                          <CheckCircle size={18} className="text-violet-400 flex-shrink-0" />
-                        )}
-                      </div>
-                    </button>
+                      game={game}
+                      isSelected={selectedGame?.id === game.id}
+                      onClick={() => setSelectedGame(game)}
+                    />
                   ))}
                 </div>
               </div>
 
-              {/* Game-specific Configuration */}
               {selectedGame && (
-                <div className="form-group">
-                  {selectedGame.code === 'teen-patti' ? (
-                    <>
-                      <label className="form-label">
-                        Number of Rounds
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={formData.totalRounds}
-                        onChange={(e) => setFormData({...formData, totalRounds: e.target.value})}
-                        className="input w-24 sm:w-32"
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
-                        Game ends after this many rounds
-                      </p>
-                    </>
-                  ) : selectedGame.code === 'rummy' ? (
-                    <>
-                      <label className="form-label">
-                        Target Points
-                      </label>
-                      <input
-                        type="number"
-                        min="50"
-                        max="500"
-                        step="10"
-                        value={formData.targetScore}
-                        onChange={(e) => setFormData({...formData, targetScore: e.target.value})}
-                        className="input w-24 sm:w-32"
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
-                        First player to reach this score wins
-                      </p>
-                    </>
-                  ) : null}
+                <div className="form-group pt-2 border-t border-slate-700">
+                  {selectedGame.code === 'rummy' ? (
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-orange-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Target size={20} className="text-orange-400" />
+                      </div>
+                      <div>
+                        <label htmlFor="target-score" className="form-label">Target Points</label>
+                        <p className="text-xs text-slate-500 mb-2">Player exceeding this score is eliminated</p>
+                        <input
+                          id="target-score"
+                          type="number"
+                          min="50" max="500" step="10"
+                          value={targetScore}
+                          onChange={(e) => setTargetScore(e.target.value)}
+                          className="input w-28"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash size={20} className="text-emerald-400" />
+                      </div>
+                      <div>
+                        <label htmlFor="total-rounds" className="form-label">Number of Rounds</label>
+                        <p className="text-xs text-slate-500 mb-2">Session ends after this many rounds</p>
+                        <input
+                          id="total-rounds"
+                          type="number"
+                          min="1" max="50"
+                          value={totalRounds}
+                          onChange={(e) => setTotalRounds(e.target.value)}
+                          className="input w-28"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Players */}
           <div className="card">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2 text-slate-50">
+            <div className="card-header flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-50 flex items-center gap-2">
                 <Users size={18} className="text-violet-400" />
                 Players
               </h2>
               <span className="badge badge-info">
-                {players.length} {players.length === 1 ? 'player' : 'players'}
+                {validCount} / {selectedGame?.maxPlayers || '?'}
               </span>
             </div>
-
-            <div className="space-y-2 sm:space-y-3">
-              {players.map((player, index) => (
-                <div key={index} className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-slate-700 rounded-lg flex items-center justify-center text-xs sm:text-sm font-medium text-slate-300 flex-shrink-0">
-                    {index + 1}
-                  </div>
-                  <input
-                    type="text"
-                    value={player.name}
-                    onChange={(e) => handlePlayerChange(index, 'name', e.target.value)}
-                    placeholder={`Player ${index + 1} name`}
-                    className="input flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePlayer(index)}
-                    className="p-1.5 sm:p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
-                    disabled={players.length <= 1}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+            <div className="card-body space-y-3">
+              {players.map((name, index) => (
+                <PlayerRow
+                  key={index}
+                  index={index}
+                  name={name}
+                  onChange={handlePlayerChange}
+                  onRemove={handleRemovePlayer}
+                  canRemove={players.length > 1}
+                />
               ))}
-            </div>
 
-            {/* Add Player Button - Moved to bottom */}
-            <button
-              type="button"
-              onClick={handleAddPlayer}
-              className="w-full mt-3 sm:mt-4 btn btn-primary btn-lg flex items-center justify-center gap-2"
-            >
-              <Plus size={18} />
-              Add Player
-            </button>
+              <button
+                type="button"
+                onClick={handleAddPlayer}
+                disabled={players.length >= PLAYER_LIMIT}
+                className="w-full py-2.5 border-2 border-dashed border-slate-600 rounded-xl text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors flex items-center justify-center gap-2 font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus size={16} />
+                Add Player
+              </button>
 
-            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-400">
-              {selectedGame ? (
-                <>Add {selectedGame.minPlayers}-{selectedGame.maxPlayers} players for {selectedGame.name}</>
-              ) : (
-                'Select a game to see player requirements'
+              {selectedGame && validCount < minPlayers && (
+                <p className="text-xs text-amber-400 flex items-center gap-1">
+                  <AlertCircle size={12} />
+                  Need at least {minPlayers} players
+                </p>
               )}
-            </p>
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+          <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => navigate('/operator/sessions')}
-              className="btn btn-outline order-2 sm:order-1"
+              onClick={() => navigate(-1)}
+              className="btn btn-outline"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="btn btn-primary btn-lg flex-1 order-1 sm:order-2 flex items-center justify-center gap-2"
+              disabled={!canSubmit}
+              className="btn btn-primary btn-lg flex-1 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Creating Session...
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Creating…
                 </>
               ) : (
-                'Create Session'
+                <>
+                  <Play size={18} />
+                  Create &amp; Start Session
+                </>
               )}
             </button>
           </div>
