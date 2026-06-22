@@ -311,22 +311,17 @@ async function initializeDatabase() {
       console.log('[INFO] Database tables already exist');
     } catch (e) {
       if (e.code === 'P2021' || e.message.includes('does not exist')) {
-        console.log('[INFO] Database tables not found. Creating schema...');
-        const { execSync } = require('child_process');
-
         if (isProduction) {
-          execSync('npx prisma migrate deploy', {
-            cwd: __dirname,
-            stdio: 'inherit'
-          });
-        } else {
-          execSync('npx prisma db push', {
-            cwd: __dirname,
-            stdio: 'inherit'
-          });
+          console.error('[FATAL] Database tables not found in production. preDeployCommand should have run prisma db push.');
+          console.error('[FATAL] Check render.yaml preDeployCommand configuration.');
+          process.exit(1);
         }
 
-        console.log('[INFO] Database schema created successfully');
+        console.log('[INFO] Database tables not found. Running db push (dev)...');
+        const { execSync } = require('child_process');
+        execSync('npx prisma db push', { cwd: __dirname, stdio: 'inherit' });
+        console.log('[INFO] Database schema pushed successfully');
+
         console.log('[INFO] Seeding database...');
         execSync('node scripts/seed-games.js', {
           cwd: __dirname,
@@ -345,19 +340,14 @@ async function initializeDatabase() {
       console.log('[INFO] Database schema is up to date');
     } catch (schemaError) {
       if (schemaError.code === 'P2022' || schemaError.code === 'P2021') {
-        console.log('[INFO] Database schema needs update. Running migration...');
-        const { execSync } = require('child_process');
         if (isProduction) {
-          execSync('npx prisma migrate deploy', {
-            cwd: __dirname,
-            stdio: 'inherit'
-          });
-        } else {
-          execSync('npx prisma db push', {
-            cwd: __dirname,
-            stdio: 'inherit'
-          });
+          console.error('[FATAL] Database schema outdated. preDeployCommand should handle this.');
+          console.error('[FATAL] Run prisma db push manually or redeploy.');
+          process.exit(1);
         }
+        console.log('[INFO] Database schema needs update. Running db push...');
+        const { execSync } = require('child_process');
+        execSync('npx prisma db push', { cwd: __dirname, stdio: 'inherit' });
         console.log('[INFO] Database schema updated successfully');
       } else {
         throw schemaError;
