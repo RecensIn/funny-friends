@@ -12,6 +12,7 @@ model User {
   username  String   @unique
   password  String   
   role      String   @default("GUEST") // 'ADMIN', 'OPERATOR', 'PLAYER', 'GUEST'
+  isActive  Boolean  @default(true)
   failedLoginAttempts Int @default(0)
   lockedUntil DateTime?
   lastPasswordChange DateTime @default(now())

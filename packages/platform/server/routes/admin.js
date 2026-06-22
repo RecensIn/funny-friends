@@ -12,7 +12,7 @@ router.get('/api/admin/sessions', requireOperator, asyncHandler(async (req, res)
 
 // GET /api/admin/users
 router.get('/api/admin/users', requireAdmin, asyncHandler(async (req, res) => {
-  const users = await prisma.user.findMany({ select: { id: true, username: true, role: true, createdAt: true } });
+  const users = await prisma.user.findMany({ select: { id: true, username: true, role: true, isActive: true, createdAt: true } });
   res.json(users);
 }));
 
@@ -68,6 +68,77 @@ router.delete('/api/admin/users/:id', requireAdmin, asyncHandler(async (req, res
   await prisma.player.deleteMany({ where: { userId: parseInt(id) } });
   await prisma.user.delete({ where: { id: parseInt(id) } });
   res.json({ success: true });
+}));
+
+// GET /api/admin/users/:id
+router.get('/api/admin/users/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: parseInt(req.params.id) },
+    select: { id: true, username: true, role: true, isActive: true, createdAt: true, allowedGames: { include: { gameType: true } } }
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+}));
+
+// PUT /api/admin/users/:id
+router.put('/api/admin/users/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { username, role, isActive, allowedGames } = req.body;
+  if (parseInt(id) === req.user.id && role !== req.user.role) return res.status(400).json({ error: 'Cannot change your own role' });
+  const validRoles = ['ADMIN', 'OPERATOR', 'PLAYER', 'GUEST'];
+  if (role && !validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  const updateData = {};
+  if (username !== undefined) updateData.username = username;
+  if (role !== undefined) updateData.role = role;
+  if (isActive !== undefined) updateData.isActive = isActive;
+
+  const user = await prisma.user.update({
+    where: { id: parseInt(id) },
+    data: updateData,
+    select: { id: true, username: true, role: true, isActive: true, createdAt: true }
+  });
+
+  if (allowedGames !== undefined) {
+    await prisma.userGamePermission.deleteMany({ where: { userId: parseInt(id) } });
+    if (allowedGames.length > 0) {
+      await prisma.userGamePermission.createMany({
+        data: allowedGames.map(g => ({
+          userId: parseInt(id),
+          gameTypeId: g.gameTypeId,
+          canCreate: g.canCreate !== false,
+          canManage: g.canManage !== false
+        }))
+      });
+    }
+  }
+
+  res.json({ success: true, user });
+}));
+
+// POST /api/admin/users/:id/toggle
+router.post('/api/admin/users/:id/toggle', requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const user = await prisma.user.findUnique({ where: { id: parseInt(id) }, select: { isActive: true } });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const updated = await prisma.user.update({
+    where: { id: parseInt(id) },
+    data: { isActive: !user.isActive },
+    select: { id: true, isActive: true }
+  });
+  res.json({ success: true, user: updated });
+}));
+
+// PUT /api/admin/games/:id — toggle game active status
+router.put('/api/admin/games/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { isActive } = req.body;
+  const game = await prisma.gameType.update({
+    where: { id },
+    data: { isActive: isActive !== false },
+    select: { id: true, code: true, isActive: true }
+  });
+  res.json({ success: true, game });
 }));
 
 // POST /api/admin/sessions/:name/end
