@@ -304,31 +304,21 @@ async function initializeDatabase() {
     await prisma.$connect();
     console.log('[INFO] Database connection successful');
 
-    const isProduction = process.env.NODE_ENV === 'production';
+    const { execSync } = require('child_process');
+    let needsSeed = false;
 
     try {
       await prisma.$queryRaw`SELECT 1 FROM "User" LIMIT 1`;
       console.log('[INFO] Database tables already exist');
     } catch (e) {
       if (e.code === 'P2021' || e.message.includes('does not exist')) {
-        if (isProduction) {
-          console.error('[FATAL] Database tables not found in production. preDeployCommand should have run prisma db push.');
-          console.error('[FATAL] Check render.yaml preDeployCommand configuration.');
-          process.exit(1);
-        }
-
-        console.log('[INFO] Database tables not found. Running db push (dev)...');
-        const { execSync } = require('child_process');
-        execSync('npx prisma db push', { cwd: __dirname, stdio: 'inherit' });
-        console.log('[INFO] Database schema pushed successfully');
-
-        console.log('[INFO] Seeding database...');
-        execSync('node scripts/seed-games.js', {
-          cwd: __dirname,
-          stdio: 'inherit',
-          env: { ...process.env, NODE_ENV: process.env.NODE_ENV }
+        console.log('[INFO] Database tables not found. Running db push...');
+        execSync('npx prisma db push', {
+          cwd: __dirname, stdio: 'inherit',
+          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
         });
-        console.log('[INFO] Database seeded successfully');
+        console.log('[INFO] Database schema pushed successfully');
+        needsSeed = true;
       } else {
         throw e;
       }
@@ -340,18 +330,24 @@ async function initializeDatabase() {
       console.log('[INFO] Database schema is up to date');
     } catch (schemaError) {
       if (schemaError.code === 'P2022' || schemaError.code === 'P2021') {
-        if (isProduction) {
-          console.error('[FATAL] Database schema outdated. preDeployCommand should handle this.');
-          console.error('[FATAL] Run prisma db push manually or redeploy.');
-          process.exit(1);
-        }
         console.log('[INFO] Database schema needs update. Running db push...');
-        const { execSync } = require('child_process');
-        execSync('npx prisma db push', { cwd: __dirname, stdio: 'inherit' });
+        execSync('npx prisma db push', {
+          cwd: __dirname, stdio: 'inherit',
+          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+        });
         console.log('[INFO] Database schema updated successfully');
       } else {
         throw schemaError;
       }
+    }
+
+    if (needsSeed) {
+      console.log('[INFO] Seeding database...');
+      execSync('node scripts/seed-games.js', {
+        cwd: __dirname, stdio: 'inherit',
+        env: { ...process.env, NODE_ENV: process.env.NODE_ENV }
+      });
+      console.log('[INFO] Database seeded successfully');
     }
   } catch (error) {
     console.error('[ERROR] Database initialization failed:', error.message);
