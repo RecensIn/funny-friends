@@ -148,12 +148,21 @@ class GameManager extends EventEmitter {
 
     addPlayer(player) {
         if (this.gameState.phase !== 'SETUP') return false;
-        this.gameState.players.push({
-            ...player,
+        const newPlayer = {
+            id: player.id,
+            name: player.name,
+            seat: player.seat || ((this.gameState.players.length || 0) + 1),
+            sessionBalance: player.sessionBalance || 0,
             status: 'BLIND',
             folded: false,
             invested: 0
-        });
+        };
+        this.gameState.players.push(newPlayer);
+        const existsInGamePlayers = this.gameState.gamePlayers.some(p => p.id === player.id);
+        if (!existsInGamePlayers) {
+            this.gameState.gamePlayers.push({ ...newPlayer, hand: null });
+        }
+        this.emit('state_change', this.getPublicState());
         return true;
     }
 

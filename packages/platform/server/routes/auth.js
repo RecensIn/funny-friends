@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -14,6 +15,15 @@ const {
 const authController = require('../controllers/auth.controller');
 
 const router = Router();
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: SECURITY_CONFIG.AUTH_RATE_LIMIT_MAX,
+  message: { error: 'Too many login attempts from this IP. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
 
 const setupSchema = z.object({
   setupKey: z.string().min(10),
@@ -33,7 +43,7 @@ router.get('/api/setup/status', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/auth/setup (rate limited via app-level middleware)
-router.post('/api/auth/setup', asyncHandler(async (req, res) => {
+router.post('/api/auth/setup', authLimiter, asyncHandler(async (req, res) => {
   const clientIp = req.ip;
   const userAgent = req.headers['user-agent'];
   const isProduction = process.env.NODE_ENV === 'production';
@@ -99,7 +109,7 @@ router.post('/api/setup/reset', requireAdmin, asyncHandler(async (req, res) => {
 }));
 
 // POST /api/auth/login (legacy — keep for backward compat, replaced by v2)
-router.post('/api/auth/login', asyncHandler(async (req, res) => {
+router.post('/api/auth/login', authLimiter, asyncHandler(async (req, res) => {
   const clientIp = req.ip;
   const userAgent = req.headers['user-agent'];
   const isProduction = process.env.NODE_ENV === 'production';
@@ -212,7 +222,7 @@ router.post('/api/auth/logout-all', requireAuth, asyncHandler(async (req, res) =
 }));
 
 // POST /api/v2/auth/login
-router.post('/api/v2/auth/login', asyncHandler(async (req, res) => { await authController.handleLogin(req, res); }));
+router.post('/api/v2/auth/login', authLimiter, asyncHandler(async (req, res) => { await authController.handleLogin(req, res); }));
 
 // GET /api/v2/auth/me
 router.get('/api/v2/auth/me', asyncHandler(async (req, res) => { await authController.checkSession(req, res); }));

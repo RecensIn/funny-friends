@@ -85,7 +85,21 @@ router.post('/api/admin/sessions/:name/end', requireOperator, asyncHandler(async
   } else {
     await prisma.gameSession.update({ where: { id: session.id }, data: { isActive: false } });
     activeSessions.delete(name);
-    io.to(name).emit('session_ended', { reason: 'ADMIN_ENDED' });
+    const dbPlayers = await prisma.player.findMany({ where: { sessionId: session.id } });
+    const finalPlayers = dbPlayers.map(p => ({
+      id: p.id, name: p.name, sessionBalance: p.sessionBalance, score: p.score, status: p.status
+    }));
+    const sorted = [...finalPlayers].sort((a, b) => (b.sessionBalance || 0) - (a.sessionBalance || 0));
+    io.to(name).emit('session_ended', {
+      reason: 'ADMIN_ENDED',
+      finalRound: session.currentRound,
+      totalRounds: session.totalRounds,
+      overallWinner: sorted[0] || null,
+      finalWinner: sorted[0] || null,
+      finalPlayers,
+      leaderboard: finalPlayers,
+      roundHistory: []
+    });
   }
   res.json({ success: true });
 }));
