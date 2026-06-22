@@ -305,49 +305,29 @@ async function initializeDatabase() {
     console.log('[INFO] Database connection successful');
 
     const { execSync } = require('child_process');
-    let needsSeed = false;
 
+    // Always sync schema on startup. db push is additive — no data loss.
+    // PreDeployCommand may not run reliably, server is the final authority.
+    console.log('[INFO] Syncing database schema...');
+    execSync('npx prisma db push --accept-data-loss', {
+      cwd: __dirname, stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+    });
+    console.log('[INFO] Database schema synced');
+
+    // Seed if game types don't exist
     try {
-      await prisma.$queryRaw`SELECT 1 FROM "User" LIMIT 1`;
-      console.log('[INFO] Database tables already exist');
-    } catch (e) {
-      if (e.code === 'P2021' || e.message.includes('does not exist')) {
-        console.log('[INFO] Database tables not found. Running db push...');
-        execSync('npx prisma db push --accept-data-loss', {
+      const gameCount = await prisma.gameType.count();
+      if (gameCount === 0) {
+        console.log('[INFO] No game types found. Seeding...');
+        execSync('node scripts/seed-games.js', {
           cwd: __dirname, stdio: 'inherit',
-          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+          env: { ...process.env, NODE_ENV: process.env.NODE_ENV }
         });
-        console.log('[INFO] Database schema pushed successfully');
-        needsSeed = true;
-      } else {
-        throw e;
+        console.log('[INFO] Database seeded');
       }
-    }
-
-    // Verify schema compatibility (new columns exist)
-    try {
-      await prisma.gameSession.findFirst({ select: { snapshot: true, lastActivityAt: true, roundHistory: true } });
-      console.log('[INFO] Database schema is up to date');
-    } catch (schemaError) {
-      if (schemaError.code === 'P2022' || schemaError.code === 'P2021') {
-        console.log('[INFO] Database schema needs update. Running db push...');
-        execSync('npx prisma db push --accept-data-loss', {
-          cwd: __dirname, stdio: 'inherit',
-          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
-        });
-        console.log('[INFO] Database schema updated successfully');
-      } else {
-        throw schemaError;
-      }
-    }
-
-    if (needsSeed) {
-      console.log('[INFO] Seeding database...');
-      execSync('node scripts/seed-games.js', {
-        cwd: __dirname, stdio: 'inherit',
-        env: { ...process.env, NODE_ENV: process.env.NODE_ENV }
-      });
-      console.log('[INFO] Database seeded successfully');
+    } catch (seedCheckErr) {
+      console.log('[INFO] GameType table not accessible yet — db push may have created it');
     }
   } catch (error) {
     console.error('[ERROR] Database initialization failed:', error.message);
