@@ -11,6 +11,8 @@
     "db:generate": "npx prisma generate",
     "db:seed": "node scripts/seed-games.js",
     "db:studio": "npx prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf node_modules"
   },
   "keywords": [],
@@ -37,6 +39,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "vitest": "^4.1.9"
   }
 }

@@ -1,91 +1,161 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Gamepad2, Activity, TrendingUp, Shield, Clock, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Users, Gamepad2, Activity, Shield, Clock,
+  Server, CheckCircle, XCircle, Play, ChevronRight,
+  UserPlus
+} from 'lucide-react';
 import { API_URL } from '../../config';
 
 const AdminDashboardOverview = () => {
+  const navigate = useNavigate();
+
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeOperators: 0,
-    totalSessions: 0,
     activeSessions: 0,
-    totalGames: 0,
-    recentLogins: []
+    totalSessions: 0,
+    totalGameTypes: 0
   });
+  const [sessions, setSessions] = useState([]);
+  const [recentUsers, setRecentUsers] = useState([]);
+  const [health, setHealth] = useState({ ok: false, checking: true });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardStats();
+    fetchAll();
   }, []);
 
-  const fetchDashboardStats = async () => {
+  const fetchAll = async () => {
     try {
-      // Fetch all necessary data
-      const [usersRes, sessionsRes, gamesRes] = await Promise.all([
+      const [usersRes, sessionsRes, gamesRes, healthRes] = await Promise.all([
         fetch(`${API_URL}/api/admin/users`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/admin/sessions`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/gametypes`, { credentials: 'include' })
+        fetch(`${API_URL}/api/v2/sessions`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/gametypes`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/setup/status`)
       ]);
 
-      const users = usersRes.ok ? await usersRes.json() : [];
-      const sessions = sessionsRes.ok ? await sessionsRes.json() : [];
-      const games = gamesRes.ok ? await gamesRes.json() : [];
+      let users = [];
+      let rawSessions = [];
+      let games = [];
+
+      if (usersRes.ok) users = await usersRes.json();
+      if (sessionsRes.ok) {
+        const data = await sessionsRes.json();
+        rawSessions = data.sessions || [];
+      }
+      if (gamesRes.ok) games = await gamesRes.json();
+
+      const operatorCount = users.filter(u => u.role === 'OPERATOR').length;
+      const active = rawSessions.filter(s => s.isActive);
+      const activeGames = games.filter(g => g.isActive);
 
       setStats({
         totalUsers: users.length,
-        activeOperators: users.filter(u => u.role === 'OPERATOR').length,
-        totalSessions: sessions.length,
-        activeSessions: sessions.filter(s => s.isActive).length,
-        totalGames: games.filter(g => g.isActive).length,
-        recentLogins: users.slice(0, 5)
+        activeOperators: operatorCount,
+        activeSessions: active.length,
+        totalSessions: rawSessions.length,
+        totalGameTypes: activeGames.length
       });
+
+      setSessions(rawSessions);
+
+      // Recent users: newest 5 by createdAt
+      const sorted = [...users].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      setRecentUsers(sorted.slice(0, 5));
+
+      // Health: if /api/setup/status responds, server is up
+      setHealth({ ok: healthRes.ok, checking: false });
     } catch (error) {
-      console.error('Failed to fetch dashboard stats:', error);
+      console.error('Failed to fetch dashboard data:', error);
+      setHealth({ ok: false, checking: false });
     } finally {
       setLoading(false);
     }
   };
+
+  const activeSessions = sessions.filter(s => s.isActive);
 
   const statCards = [
     {
       title: 'Total Users',
       value: stats.totalUsers,
       icon: Users,
-      color: 'blue',
-      trend: '+12%',
+      color: 'from-blue-500 to-blue-700',
+      bg: 'bg-blue-500/10',
+      text: 'text-blue-400',
       description: 'Registered accounts'
     },
     {
       title: 'Active Operators',
       value: stats.activeOperators,
       icon: Shield,
-      color: 'purple',
-      trend: '+5%',
+      color: 'from-purple-500 to-purple-700',
+      bg: 'bg-purple-500/10',
+      text: 'text-purple-400',
       description: 'Approved operators'
     },
     {
       title: 'Active Sessions',
       value: `${stats.activeSessions}/${stats.totalSessions}`,
       icon: Gamepad2,
-      color: 'green',
-      trend: 'Live',
+      color: 'from-green-500 to-green-700',
+      bg: 'bg-green-500/10',
+      text: 'text-green-400',
       description: 'Currently running'
     },
     {
-      title: 'Available Games',
-      value: stats.totalGames,
+      title: 'Game Types',
+      value: stats.totalGameTypes,
       icon: Activity,
-      color: 'orange',
-      trend: '+2',
-      description: 'Game types'
+      color: 'from-orange-500 to-orange-700',
+      bg: 'bg-orange-500/10',
+      text: 'text-orange-400',
+      description: 'Available games'
     }
   ];
 
   const quickActions = [
-    { label: 'Create New User', path: '/admin/users', color: 'bg-blue-500' },
-    { label: 'Manage Permissions', path: '/admin/permissions', color: 'bg-purple-500' },
-    { label: 'View All Sessions', path: '/admin/sessions', color: 'bg-green-500' },
-    { label: 'Platform Settings', path: '/admin/settings', color: 'bg-orange-500' }
+    { label: 'Create New User', path: '/admin/users', color: 'bg-blue-500 hover:bg-blue-600' },
+    { label: 'Manage Permissions', path: '/admin/permissions', color: 'bg-purple-500 hover:bg-purple-600' },
+    { label: 'View All Sessions', path: '/admin/games', color: 'bg-green-500 hover:bg-green-600' },
+    { label: 'Platform Settings', path: '/admin/settings', color: 'bg-orange-500 hover:bg-orange-600' }
   ];
+
+  const formatDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHr = Math.floor(diffMs / 3600000);
+
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return d.toLocaleDateString();
+  };
+
+  const roleBadge = (role) => {
+    const map = {
+      ADMIN: 'bg-red-500/10 text-red-400',
+      OPERATOR: 'bg-purple-500/10 text-purple-400',
+      PLAYER: 'bg-blue-500/10 text-blue-400',
+      GUEST: 'bg-slate-500/10 text-slate-400'
+    };
+    return map[role] || 'bg-slate-500/10 text-slate-400';
+  };
+
+  const renderSessionProgress = (session) => {
+    if (session.gameLimitType === 'rounds' && session.totalRounds) {
+      return `Round ${session.currentRound || 0}/${session.totalRounds}`;
+    }
+    if (session.gameLimitType === 'points' && session.targetScore) {
+      return `Target: ${session.targetScore} pts`;
+    }
+    return `Round ${session.currentRound || 0}`;
+  };
 
   if (loading) {
     return (
@@ -98,44 +168,41 @@ const AdminDashboardOverview = () => {
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-6 text-white">
-        <h3 className="text-2xl font-bold mb-2">Welcome to Admin Control Panel</h3>
+      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-6">
+        <h3 className="text-2xl font-bold text-white mb-2">Admin Control Panel</h3>
         <p className="text-purple-100">
-          Manage your platform efficiently. You have full control over users, permissions, games, and system settings.
+          Manage users, sessions, permissions, and system settings.
         </p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat, index) => (
-          <div 
+          <div
             key={index}
-            className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow"
+            className="card bg-slate-800 border-slate-700 hover:border-slate-600 transition-colors"
           >
             <div className="flex items-start justify-between mb-4">
-              <div className={`p-3 rounded-xl bg-${stat.color}-100`}>
-                <stat.icon size={24} className={`text-${stat.color}-600`} />
+              <div className={`p-3 rounded-xl ${stat.bg}`}>
+                <stat.icon size={24} className={stat.text} />
               </div>
-              <span className={`text-sm font-medium text-${stat.color}-600 bg-${stat.color}-50 px-2 py-1 rounded-full`}>
-                {stat.trend}
-              </span>
             </div>
-            <h4 className="text-2xl font-bold text-slate-900 mb-1">{stat.value}</h4>
-            <p className="text-sm font-medium text-slate-700">{stat.title}</p>
+            <h4 className="text-2xl font-bold text-slate-50 mb-1">{stat.value}</h4>
+            <p className="text-sm font-medium text-slate-300">{stat.title}</p>
             <p className="text-xs text-slate-500 mt-1">{stat.description}</p>
           </div>
         ))}
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl p-6 border border-slate-200">
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Actions</h3>
+      <div className="card bg-slate-800 border-slate-700">
+        <h3 className="text-lg font-bold text-slate-50 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {quickActions.map((action, index) => (
             <button
               key={index}
-              onClick={() => window.location.href = action.path}
-              className={`${action.color} hover:opacity-90 text-white p-4 rounded-xl font-medium transition-opacity text-left`}
+              onClick={() => navigate(action.path)}
+              className={`${action.color} text-white p-4 rounded-xl font-medium transition-colors text-left`}
             >
               {action.label}
             </button>
@@ -143,69 +210,157 @@ const AdminDashboardOverview = () => {
         </div>
       </div>
 
-      {/* System Status */}
+      {/* Active Sessions + Recent Users */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-slate-200">
+        {/* Active Sessions */}
+        <div className="card bg-slate-800 border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-slate-900">System Status</h3>
-            <span className="flex items-center gap-2 text-green-600 text-sm font-medium">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              All Systems Operational
-            </span>
+            <h3 className="text-lg font-bold text-slate-50">
+              Active Sessions
+              <span className="ml-2 text-sm font-normal text-slate-400">
+                ({activeSessions.length})
+              </span>
+            </h3>
+            <button
+              onClick={() => navigate('/admin/games')}
+              className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors"
+            >
+              View all <ChevronRight size={14} />
+            </button>
           </div>
-          
-          <div className="space-y-3">
-            {[
-              { name: 'Database Connection', status: 'Operational', time: '< 50ms' },
-              { name: 'WebSocket Server', status: 'Operational', time: '< 20ms' },
-              { name: 'Authentication Service', status: 'Operational', time: '< 30ms' },
-              { name: 'Game Engine', status: 'Operational', time: '< 10ms' }
-            ].map((service, index) => (
-              <div key={index} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-                <span className="text-slate-700">{service.name}</span>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs text-slate-500">{service.time}</span>
-                  <span className="text-sm text-green-600 font-medium">{service.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+
+          {activeSessions.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <Gamepad2 className="mx-auto mb-3 opacity-30" size={32} />
+              <p>No active sessions</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activeSessions.slice(0, 5).map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => navigate(`/game/${encodeURIComponent(session.name)}`)}
+                  className="w-full flex items-center gap-4 p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors text-left"
+                >
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Play size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-50 truncate">
+                      {session.name}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {session.gameType} &middot; {session.playerCount || 0} players
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="badge badge-success text-xs">
+                      {renderSessionProgress(session)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {activeSessions.length > 5 && (
+                <button
+                  onClick={() => navigate('/admin/games')}
+                  className="w-full text-center text-sm text-slate-400 hover:text-slate-300 py-2 transition-colors"
+                >
+                  +{activeSessions.length - 5} more active sessions
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Recent Activity</h3>
-          <div className="space-y-3">
-            {[
-              { action: 'User Created', user: 'operator_john', time: '2 min ago' },
-              { action: 'Session Started', user: 'Game Night #45', time: '15 min ago' },
-              { action: 'Permission Updated', user: 'player_sarah', time: '1 hour ago' },
-              { action: 'Game Completed', user: 'Teen Patti #12', time: '2 hours ago' }
-            ].map((activity, index) => (
-              <div key={index} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{activity.action}</p>
-                  <p className="text-xs text-slate-500">{activity.user}</p>
-                </div>
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <Clock size={12} />
-                  {activity.time}
-                </span>
-              </div>
-            ))}
+        {/* Recent Users */}
+        <div className="card bg-slate-800 border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-50">Recent Users</h3>
+            <button
+              onClick={() => navigate('/admin/users')}
+              className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors"
+            >
+              Manage <ChevronRight size={14} />
+            </button>
           </div>
+
+          {recentUsers.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <Users className="mx-auto mb-3 opacity-30" size={32} />
+              <p>No users found</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center gap-3 py-2.5 border-b border-slate-700 last:border-0"
+                >
+                  <div className="w-9 h-9 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
+                    <UserPlus size={14} className="text-slate-300" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-50 truncate">
+                      {user.username}
+                    </p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <Clock size={11} />
+                      {formatDate(user.createdAt)}
+                    </p>
+                  </div>
+                  <span className={`badge text-xs ${roleBadge(user.role)}`}>
+                    {user.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Alerts */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
-        <AlertCircle size={20} className="text-yellow-600 flex-shrink-0 mt-0.5" />
-        <div>
-          <h4 className="font-medium text-yellow-900">System Maintenance Notice</h4>
-          <p className="text-sm text-yellow-700 mt-1">
-            Scheduled maintenance is planned for this weekend. The platform will be temporarily unavailable 
-            for 30 minutes during the update. All active sessions should be completed before then.
-          </p>
+      {/* System Health */}
+      <div className="card bg-slate-800 border-slate-700">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-slate-50">System Health</h3>
+          <span className={`flex items-center gap-2 text-sm font-medium ${health.ok ? 'text-green-400' : 'text-red-400'}`}>
+            <div className={`w-2 h-2 rounded-full ${health.checking ? 'bg-yellow-500 animate-pulse' : health.ok ? 'bg-green-500' : 'bg-red-500'}`} />
+            {health.checking ? 'Checking...' : health.ok ? 'All Systems Operational' : 'Service Unreachable'}
+          </span>
         </div>
+
+        {health.ok && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: 'API Server', icon: Server, ok: true },
+              { label: 'Database', icon: Server, ok: true },
+              { label: 'Active Sessions', icon: Play, ok: stats.activeSessions >= 0 },
+              { label: 'Users Online', icon: Users, ok: stats.totalUsers >= 0 }
+            ].map((item, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg"
+              >
+                <item.icon size={18} className="text-slate-400" />
+                <div className="flex-1">
+                  <p className="text-sm text-slate-300">{item.label}</p>
+                </div>
+                {item.ok ? (
+                  <CheckCircle size={16} className="text-green-400" />
+                ) : (
+                  <XCircle size={16} className="text-red-400" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!health.ok && !health.checking && (
+          <div className="text-center py-6 text-slate-500">
+            <XCircle className="mx-auto mb-2 text-red-400" size={32} />
+            <p>Unable to reach API server</p>
+            <p className="text-xs mt-1">Check server status and network connectivity</p>
+          </div>
+        )}
       </div>
     </div>
   );

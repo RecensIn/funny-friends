@@ -10,8 +10,8 @@ import { useAuth } from '../../context/AuthContext';
 const OperatorControlPanel = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -95,14 +95,16 @@ const OperatorControlPanel = () => {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 sm:py-6 px-2 sm:px-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 py-4 sm:py-6 px-2 sm:px-3 space-y-1 overflow-y-auto" role="navigation" aria-label="Operator navigation">
           {menuItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
+              aria-current="page"
               onClick={() => isMobile && setSidebarOpen(false)}
               className={({ isActive }) => `
                 flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl transition-all
+                focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:outline-none
                 ${isActive 
                   ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25' 
                   : 'text-slate-400 hover:bg-slate-700 hover:text-slate-100'

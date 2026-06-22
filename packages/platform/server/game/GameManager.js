@@ -212,7 +212,13 @@ class GameManager extends EventEmitter {
                 finalRound: this.currentRound - 1,
                 totalRounds: this.totalRounds,
                 overallWinner: this.overallWinner,
-                roundHistory: this.roundHistory,
+                finalWinner: this.overallWinner,
+                finalPlayers: this.gameState.players,
+                roundHistory: this.roundHistory.map(r => ({
+                    round: r.round,
+                    winnerName: r.winner?.name || 'No winner',
+                    pot: r.pot
+                })),
                 players: this.gameState.players
             });
             return { success: false, error: "All rounds completed" };
@@ -657,7 +663,13 @@ class GameManager extends EventEmitter {
                 finalRound: this.currentRound,
                 totalRounds: this.totalRounds,
                 overallWinner: this.overallWinner,
-                roundHistory: this.roundHistory,
+                finalWinner: this.overallWinner,
+                finalPlayers: playerStandings,
+                roundHistory: this.roundHistory.map(r => ({
+                    round: r.round,
+                    winnerName: r.winner?.name || 'No winner',
+                    pot: r.pot
+                })),
                 players: this.gameState.players
             });
         }
@@ -746,7 +758,13 @@ class GameManager extends EventEmitter {
             finalRound: this.currentRound,
             totalRounds: this.totalRounds,
             overallWinner: this.overallWinner,
-            roundHistory: this.roundHistory,
+            finalWinner: this.overallWinner,
+            finalPlayers: finalStandings,
+            roundHistory: this.roundHistory.map(r => ({
+                round: r.round,
+                winnerName: r.winner?.name || 'No winner',
+                pot: r.pot
+            })),
             players: this.gameState.players,
             finalStandings
         });
@@ -847,3 +865,7 @@ class GameManager extends EventEmitter {
 }
 
 module.exports = GameManager;
+module.exports.evaluateHand = evaluateHand;
+module.exports.compareHands = compareHands;
+module.exports.createDeck = createDeck;
+module.exports.shuffleDeck = shuffleDeck;

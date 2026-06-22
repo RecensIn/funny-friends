@@ -84,7 +84,20 @@ class RummyLedger extends EventEmitter {
     startRound() {
         if (this.currentRound > this.totalRounds) {
             this.isActive = false;
-            return { success: false, error: "Session complete" };
+            this.gameState.phase = 'ENDED';
+            const leaderboard = this.gameState.players
+                .filter(p => p.status !== 'ELIMINATED' || p.score > 0)
+                .map(p => ({ id: p.id, name: p.name, totalScore: p.score, score: p.score, status: p.status }))
+                .sort((a, b) => a.totalScore - b.totalScore);
+            this.emit('session_ended', {
+                reason: 'MAX_ROUNDS_REACHED',
+                finalRound: this.totalRounds,
+                totalRounds: this.totalRounds,
+                finalWinner: leaderboard[0] || null,
+                leaderboard,
+                roundHistory: this.roundHistory
+            });
+            return { success: false, error: "All rounds completed" };
         }
         
         const validPlayers = this.gameState.players.filter(p => p.name && p.name.trim() !== '' && p.status === 'PLAYING');
@@ -251,7 +264,7 @@ class RummyLedger extends EventEmitter {
     }
 
     checkElimination(player) {
-        if (player.score >= this.targetScore + 1) {
+        if (player.score > this.targetScore) {
             player.status = 'ELIMINATED';
             this.gameState.currentLogs.push(`🚫 ${player.name} ELIMINATED! (${player.score} pts)`);
         }
@@ -340,7 +353,12 @@ class RummyLedger extends EventEmitter {
                 finalRound: completedRound,
                 totalRounds: this.totalRounds,
                 leaderboard: leaderboard,
-                roundHistory: this.roundHistory
+                finalPlayers: leaderboard,
+                roundHistory: this.roundHistory.map(r => ({
+                    round: r.round,
+                    winnerName: r.winner?.name || 'N/A',
+                    leaderboard: r.leaderboard
+                }))
             });
         }
 
@@ -410,7 +428,12 @@ class RummyLedger extends EventEmitter {
             totalRounds: this.totalRounds,
             finalWinner: finalLeaderboard.length > 0 ? finalLeaderboard[0] : null,
             leaderboard: finalLeaderboard,
-            roundHistory: this.roundHistory
+            finalPlayers: finalLeaderboard,
+            roundHistory: this.roundHistory.map(r => ({
+                round: r.round,
+                winnerName: r.winner?.name || 'N/A',
+                leaderboard: r.leaderboard
+            }))
         });
     }
 
