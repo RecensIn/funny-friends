@@ -1,243 +1,161 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Filter, MoreVertical, Edit2, Trash2, 
-  UserCheck, UserX, Shield, Gamepad2, Mail, CheckCircle, XCircle 
-} from 'lucide-react';
+import { Plus, Search, Filter, Edit2, Trash2, UserCheck, UserX, Shield, Gamepad2, CheckCircle, XCircle } from 'lucide-react';
 import { API_URL } from '../../config';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
+  const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('ALL');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [availableGames, setAvailableGames] = useState([]);
-  const [notification, setNotification] = useState(null);
-
-  // Form states
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-    role: 'PLAYER',
-    allowedGames: []
+  const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [form, setForm] = useState({
+    username: '', password: '', role: 'PLAYER',
+    isActive: true, allowedGames: {}
   });
 
-  useEffect(() => {
-    fetchUsers();
-    fetchGames();
-  }, []);
+  useEffect(() => { fetchUsers(); fetchGames(); }, []);
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/admin/users`, {
-        credentials: 'include'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch(`${API_URL}/api/admin/users`, { credentials: 'include' });
+      if (res.ok) setUsers(await res.json());
+    } catch (e) { /* silent */ } finally { setLoading(false); }
   };
 
   const fetchGames = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/gametypes`, {
-        credentials: 'include'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAvailableGames(data.filter(g => g.isActive));
-      }
-    } catch (error) {
-      console.error('Failed to fetch games:', error);
-    }
+      const res = await fetch(`${API_URL}/api/gametypes`, { credentials: 'include' });
+      if (res.ok) setGames(await res.json());
+    } catch (e) { /* silent */ }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_URL}/api/admin/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData)
-      });
-
-      if (res.ok) {
-        showNotification('User created successfully', 'success');
-        setShowCreateModal(false);
-        resetForm();
-        fetchUsers();
-      } else {
-        const error = await res.json();
-        showNotification(error.error || 'Failed to create user', 'error');
-      }
-    } catch (error) {
-      showNotification('Error creating user', 'error');
-    }
+  const notify = (message, type) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
   };
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_URL}/api/admin/users/${selectedUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData)
-      });
-
-      if (res.ok) {
-        showNotification('User updated successfully', 'success');
-        setShowEditModal(false);
-        setSelectedUser(null);
-        resetForm();
-        fetchUsers();
-      } else {
-        const error = await res.json();
-        showNotification(error.error || 'Failed to update user', 'error');
-      }
-    } catch (error) {
-      showNotification('Error updating user', 'error');
-    }
+  const openCreate = () => {
+    setEditingUser(null);
+    setForm({ username: '', password: '', role: 'PLAYER', isActive: true, allowedGames: {} });
+    setShowModal(true);
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/api/admin/users/${userId}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-
-      if (res.ok) {
-        showNotification('User deleted successfully', 'success');
-        fetchUsers();
-      } else {
-        showNotification('Failed to delete user', 'error');
-      }
-    } catch (error) {
-      showNotification('Error deleting user', 'error');
-    }
-  };
-
-  const handleToggleActive = async (user) => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/users/${user.id}/toggle`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-
-      if (res.ok) {
-        showNotification(`User ${user.isActive ? 'deactivated' : 'activated'} successfully`, 'success');
-        fetchUsers();
-      }
-    } catch (error) {
-      showNotification('Error toggling user status', 'error');
-    }
-  };
-
-  const openEditModal = (user) => {
-    setSelectedUser(user);
-    setFormData({
-      username: user.username,
-      email: user.email || '',
-      password: '', // Empty means don't change
-      role: user.role,
-      isActive: user.isActive,
-      allowedGames: user.allowedGames || []
+  const openEdit = (user) => {
+    setEditingUser(user);
+    const perms = {};
+    (user.allowedGames || []).forEach(p => { perms[p.gameTypeId] = { canCreate: p.canCreate, canManage: p.canManage }; });
+    setForm({
+      username: user.username, password: '',
+      role: user.role, isActive: user.isActive !== false,
+      allowedGames: perms
     });
-    setShowEditModal(true);
+    setShowModal(true);
   };
 
-  const resetForm = () => {
-    setFormData({
-      username: '',
-      email: '',
-      password: '',
-      role: 'PLAYER',
-      isActive: true,
-      allowedGames: []
+  const togglePermission = (gameId) => {
+    setForm(prev => {
+      const next = { ...prev.allowedGames };
+      if (next[gameId]) {
+        delete next[gameId];
+      } else {
+        next[gameId] = { canCreate: true, canManage: true };
+      }
+      return { ...prev, allowedGames: next };
     });
   };
 
-  const showNotification = (message, type) => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 5000);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.username.trim()) return notify('Username required', 'error');
+    if (!editingUser && !form.password) return notify('Password required', 'error');
+
+    const payload = {
+      username: form.username.trim(), role: form.role, isActive: form.isActive,
+      allowedGames: Object.entries(form.allowedGames).map(([gameTypeId, perms]) => ({
+        gameTypeId, canCreate: perms.canCreate, canManage: perms.canManage
+      }))
+    };
+    if (form.password) payload.password = form.password;
+
+    try {
+      const url = editingUser
+        ? `${API_URL}/api/admin/users/${editingUser.id}`
+        : `${API_URL}/api/admin/users`;
+      const method = editingUser ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        notify(editingUser ? 'User updated' : 'User created', 'success');
+        setShowModal(false);
+        fetchUsers();
+      } else {
+        const err = await res.json();
+        notify(err.error || 'Failed', 'error');
+      }
+    } catch (e) {
+      notify('Network error', 'error');
+    }
   };
 
-  const toggleGamePermission = (gameId) => {
-    setFormData(prev => ({
-      ...prev,
-      allowedGames: prev.allowedGames.includes(gameId)
-        ? prev.allowedGames.filter(id => id !== gameId)
-        : [...prev.allowedGames, gameId]
-    }));
+  const handleDelete = async (userId) => {
+    if (!window.confirm('Delete this user? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}`, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) { notify('User deleted', 'success'); fetchUsers(); }
+      else notify('Failed to delete', 'error');
+    } catch (e) { notify('Network error', 'error'); }
   };
 
-  // Filter users
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (user.email && user.email.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesRole = filterRole === 'ALL' || user.role === filterRole;
-    return matchesSearch && matchesRole;
+  const handleToggle = async (user) => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${user.id}/toggle`, { method: 'POST', credentials: 'include' });
+      if (res.ok) { notify(`User ${user.isActive ? 'deactivated' : 'activated'}`, 'success'); fetchUsers(); }
+    } catch (e) { notify('Network error', 'error'); }
+  };
+
+  const filtered = users.filter(u => {
+    const matchSearch = u.username.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchRole = filterRole === 'ALL' || u.role === filterRole;
+    return matchSearch && matchRole;
   });
 
-  const getRoleBadge = (role) => {
-    const colors = {
-      ADMIN: 'bg-red-100 text-red-700 border-red-200',
-      OPERATOR: 'bg-purple-100 text-purple-700 border-purple-200',
-      PLAYER: 'bg-blue-100 text-blue-700 border-blue-200',
-      GUEST: 'bg-slate-100 text-slate-700 border-slate-200'
-    };
-    return colors[role] || colors.GUEST;
+  const roleBadge = (role) => {
+    const m = { ADMIN: 'bg-red-500/20 text-red-400', OPERATOR: 'bg-purple-500/20 text-purple-400', PLAYER: 'bg-blue-500/20 text-blue-400' };
+    return m[role] || 'bg-slate-500/20 text-slate-400';
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
-          <p className="text-slate-500">Create, edit, and manage user accounts</p>
+          <h2 className="text-2xl font-bold text-slate-50">User Management</h2>
+          <p className="text-slate-400">Create, edit, and manage user accounts</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-        >
-          <Plus size={20} />
-          Create User
+        <button onClick={openCreate} className="btn btn-primary flex items-center gap-2">
+          <Plus size={18} /> Create User
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col md:flex-row gap-4">
+      <div className="card card-body flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
-            type="text"
-            placeholder="Search users by username or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            type="text" placeholder="Search users..." value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="input pl-10"
           />
         </div>
         <div className="flex items-center gap-2">
-          <Filter size={20} className="text-slate-400" />
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-          >
+          <Filter size={18} className="text-slate-400" />
+          <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
+            className="input w-auto">
             <option value="ALL">All Roles</option>
             <option value="ADMIN">Admin</option>
             <option value="OPERATOR">Operator</option>
@@ -247,93 +165,58 @@ const UserManagement = () => {
         </div>
       </div>
 
-      {/* Users Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-800 text-slate-400 text-xs uppercase">
               <tr>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">User</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Role</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Status</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Games</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Actions</th>
+                <th className="text-left py-3 px-4 font-medium">User</th>
+                <th className="text-left py-3 px-4 font-medium">Role</th>
+                <th className="text-left py-3 px-4 font-medium">Status</th>
+                <th className="text-left py-3 px-4 font-medium">Games</th>
+                <th className="text-right py-3 px-4 font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-700">
               {loading ? (
-                <tr>
-                  <td colSpan="5" className="py-8 text-center text-slate-500">
-                    Loading users...
-                  </td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="py-8 text-center text-slate-500">
-                    No users found matching your criteria
-                  </td>
-                </tr>
+                <tr><td colSpan="5" className="py-12 text-center text-slate-500">Loading...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan="5" className="py-12 text-center text-slate-500">No users found</td></tr>
               ) : (
-                filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="py-4 px-6">
+                filtered.map(user => (
+                  <tr key={user.id} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {user.username.charAt(0).toUpperCase()}
+                        <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-violet-700 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                          {user.username[0].toUpperCase()}
                         </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{user.username}</p>
-                          {user.email && (
-                            <p className="text-sm text-slate-500 flex items-center gap-1">
-                              <Mail size={12} />
-                              {user.email}
-                            </p>
-                          )}
-                        </div>
+                        <span className="font-medium text-slate-100">{user.username}</span>
                       </div>
                     </td>
-                    <td className="py-4 px-6">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${getRoleBadge(user.role)}`}>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${roleBadge(user.role)}`}>
                         {user.role === 'ADMIN' && <Shield size={12} />}
                         {user.role}
                       </span>
                     </td>
-                    <td className="py-4 px-6">
-                      <button
-                        onClick={() => handleToggleActive(user)}
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                          user.isActive 
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                            : 'bg-red-100 text-red-700 hover:bg-red-200'
-                        }`}
-                      >
+                    <td className="py-3 px-4">
+                      <button onClick={() => handleToggle(user)} className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                        user.isActive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                      }`}>
                         {user.isActive ? <UserCheck size={12} /> : <UserX size={12} />}
                         {user.isActive ? 'Active' : 'Inactive'}
                       </button>
                     </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-1">
-                        <Gamepad2 size={16} className="text-slate-400" />
-                        <span className="text-sm text-slate-600">
-                          {user.allowedGames?.length || 0} games
-                        </span>
-                      </div>
+                    <td className="py-3 px-4 text-slate-400">
+                      <span className="flex items-center gap-1"><Gamepad2 size={14} />{user.allowedGames?.length || 0}</span>
                     </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openEditModal(user)}
-                          className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-purple-600 transition-colors"
-                          title="Edit User"
-                        >
-                          <Edit2 size={18} />
+                    <td className="py-3 px-4">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openEdit(user)} className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-violet-400 transition-colors" title="Edit">
+                          <Edit2 size={16} />
                         </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="p-2 hover:bg-red-50 rounded-lg text-slate-600 hover:text-red-600 transition-colors"
-                          title="Delete User"
-                        >
-                          <Trash2 size={18} />
+                        <button onClick={() => handleDelete(user.id)} className="p-1.5 hover:bg-red-500/20 rounded-lg text-slate-400 hover:text-red-400 transition-colors" title="Delete">
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -345,151 +228,77 @@ const UserManagement = () => {
         </div>
       </div>
 
-      {/* Create/Edit Modal */}
-      {(showCreateModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">
-                {showCreateModal ? 'Create New User' : 'Edit User'}
-              </h3>
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="card-header">
+              <h3 className="text-lg font-bold text-slate-50">{editingUser ? 'Edit User' : 'Create New User'}</h3>
             </div>
-            
-            <form onSubmit={showCreateModal ? handleCreateUser : handleUpdateUser} className="p-6 space-y-6">
-              {/* Basic Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Username *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    placeholder="Enter username"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    placeholder="user@example.com"
-                  />
-                </div>
+
+            <form onSubmit={handleSubmit} className="card-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input type="text" required value={form.username}
+                  onChange={e => setForm({ ...form, username: e.target.value })}
+                  className="input" placeholder="Enter username" />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Password {showEditModal && '(leave blank to keep current)'}
-                  </label>
-                  <input
-                    type="password"
-                    required={showCreateModal}
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    placeholder={showEditModal ? '••••••••' : 'Enter password'}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Role *</label>
-                  <select
-                    required
-                    value={formData.role}
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="PLAYER">Player</option>
-                    <option value="OPERATOR">Operator</option>
-                    <option value="ADMIN">Admin</option>
-                    <option value="GUEST">Guest</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Game Permissions */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3">Game Permissions</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {availableGames.map((game) => (
-                    <button
-                      key={game.id}
-                      type="button"
-                      onClick={() => toggleGamePermission(game.id)}
-                      className={`p-3 rounded-lg border-2 text-left transition-all ${
-                        formData.allowedGames.includes(game.id)
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-slate-200 hover:border-purple-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                          formData.allowedGames.includes(game.id)
-                            ? 'bg-purple-500 border-purple-500'
-                            : 'border-slate-300'
-                        }`}>
-                          {formData.allowedGames.includes(game.id) && (
-                            <CheckCircle size={14} className="text-white" />
-                          )}
-                        </div>
-                        <span className="text-sm font-medium">{game.name}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={formData.isActive}
-                  onChange={(e) => setFormData({...formData, isActive: e.target.checked})}
-                  className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-                />
-                <label htmlFor="isActive" className="text-sm font-medium text-slate-700">
-                  Account Active
+              <div className="form-group">
+                <label className="form-label">
+                  Password {editingUser && '(leave blank to keep current)'}
                 </label>
+                <input type="password" required={!editingUser}
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="input" placeholder={editingUser ? '••••••••' : 'Enter password'} />
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setShowEditModal(false);
-                    setSelectedUser(null);
-                    resetForm();
-                  }}
-                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  {showCreateModal ? 'Create User' : 'Save Changes'}
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="input">
+                  <option value="PLAYER">Player</option>
+                  <option value="OPERATOR">Operator</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="GUEST">Guest</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Game Permissions</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {games.map(game => {
+                    const selected = !!form.allowedGames[game.id];
+                    return (
+                      <button key={game.id} type="button" onClick={() => togglePermission(game.id)}
+                        className={`p-3 rounded-lg border-2 text-left transition-all ${selected ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${selected ? 'bg-violet-500 border-violet-500 text-white' : 'border-slate-500'}`}>
+                            {selected ? '✓' : ''}
+                          </span>
+                          <span className="text-sm text-slate-200">{game.name}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="user-isActive" checked={form.isActive}
+                  onChange={e => setForm({ ...form, isActive: e.target.checked })}
+                  className="w-4 h-4 rounded accent-violet-600" />
+                <label htmlFor="user-isActive" className="text-sm text-slate-300">Account Active</label>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
+                <button type="button" onClick={() => setShowModal(false)}
+                  className="btn btn-outline flex-1">Cancel</button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  {editingUser ? 'Save Changes' : 'Create User'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
-      )}
-
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 ${
-          notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {notification.type === 'success' ? <CheckCircle size={20} /> : <XCircle size={20} />}
-          {notification.message}
         </div>
       )}
     </div>
