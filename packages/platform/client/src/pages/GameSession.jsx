@@ -11,6 +11,32 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useGameSocket } from '../hooks/useGameSocket';
 
+class GameSessionErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+          <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-6 max-w-lg w-full text-center">
+            <AlertCircle className="mx-auto text-red-400 mb-3" size={48} />
+            <h2 className="text-xl font-bold text-red-300 mb-2">Game Session Error</h2>
+            <p className="text-red-400/70 text-sm mb-4">Something went wrong rendering the game.</p>
+            <pre className="bg-slate-950 text-red-300 text-xs p-3 rounded-lg text-left overflow-auto max-h-48 mb-4">{this.state.error?.message}</pre>
+            <button onClick={() => { this.setState({ hasError: false }); window.location.reload(); }} className="btn btn-primary">Reload Page</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const GameSession = () => {
   const { user } = useAuth();
   const { sessionName } = useParams();
@@ -284,18 +310,20 @@ const GameSession = () => {
 
   const currentPhase = gameState?.phase || sessionStatus?.toUpperCase() || 'SETUP';
   
-  // Teen Patti specific
-  const activePlayer = gamePlayers[gameState?.activePlayerIndex || 0];
+  const gp = (gamePlayers && gamePlayers.length > 0) ? gamePlayers : [];
+  const gs = gameState || {};
+  const activePlayer = gp[(gs.activePlayerIndex || 0)];
   const isBlind = activePlayer?.status === 'BLIND';
-  const currentStake = gameState?.currentStake || 20;
-  const cost = isBlind ? currentStake / 2 : currentStake;
-  const remainingPlayers = gamePlayers.filter(p => !p.folded);
-  const blindPlayers = remainingPlayers.filter(p => p.status === 'BLIND');
-  const canForceShow = activePlayer?.status === 'SEEN' && blindPlayers.length > 0 && blindPlayers.length <= 2;
+  const remainingPlayers = gp.filter(p => p && !p.folded);
+  const blindPlayers = remainingPlayers.filter(p => p && p.status === 'BLIND');
+  const seenPlayers = gp.filter(p => p && p.status === 'SEEN' && !p.folded && p.id !== activePlayer?.id);
   const canShow = remainingPlayers.length === 2;
-  const seenPlayers = gamePlayers.filter(p => p.status === 'SEEN' && !p.folded && p.id !== activePlayer?.id);
+  const canForceShow = activePlayer?.status === 'SEEN' && blindPlayers.length > 0 && blindPlayers.length <= 2;
+  const currentStake = gs.currentStake || 20;
+  const cost = isBlind ? currentStake / 2 : currentStake;
 
   return (
+    <GameSessionErrorBoundary>
     <div className="min-h-screen bg-slate-900 relative overflow-hidden">
       <div className={`absolute inset-0 ${isRummy ? 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900 via-slate-900 to-black' : 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-900 via-slate-900 to-black'} opacity-60`}></div>
 
@@ -519,7 +547,7 @@ const GameSession = () => {
             {/* Players Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {gamePlayers.map((p, idx) => {
-                const isActive = idx === gameState?.activePlayerIndex;
+                const isActiveTP = idx === (gameState?.activePlayerIndex || 0);
                 
                 if (isRummy) {
                   const isEliminated = p.status === 'ELIMINATED';
@@ -1208,6 +1236,7 @@ const GameSession = () => {
         </div>
       )}
     </div>
+  </GameSessionErrorBoundary>
   );
 };
 
